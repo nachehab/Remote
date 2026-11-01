@@ -21,7 +21,17 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_MODE, "BLUETOOTH") ?: "BLUETOOTH"
         set(value) = sp.edit().putString(KEY_MODE, value).apply()
 
+    fun keyVariant(key: String): String? = sp.getString("variant_$key", null)
+
+    fun setKeyVariant(key: String, id: String) = sp.edit().putString("variant_$key", id).apply()
+
+    /** HID descriptor version the projector was last paired with (0 = unknown / never). */
+    var pairedDescriptorVersion: Int
+        get() = sp.getInt(KEY_DESCRIPTOR, 0)
+        set(value) = sp.edit().putInt(KEY_DESCRIPTOR, value).apply()
+
     private companion object {
+        const val KEY_DESCRIPTOR = "descriptor_version"
         const val KEY_HOST = "host"
         const val KEY_PORT = "port"
         const val KEY_BT = "bt_address"

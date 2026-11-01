@@ -3,6 +3,7 @@
 package com.nachehab.projectorremote.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -47,6 +48,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeDown
@@ -65,6 +67,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -97,6 +100,7 @@ import com.nachehab.projectorremote.Mode
 import com.nachehab.projectorremote.RemoteViewModel
 import com.nachehab.projectorremote.ScanState
 import com.nachehab.projectorremote.bt.BluetoothState
+import com.nachehab.projectorremote.bt.KeyVariants
 import com.nachehab.projectorremote.bt.PairedDevice
 import com.nachehab.projectorremote.model.RemoteKey
 import com.nachehab.projectorremote.wifi.InstalledApp
@@ -118,6 +122,9 @@ fun RemoteScreen(
     val scan by viewModel.scan.collectAsStateWithLifecycle()
     val apps by viewModel.apps.collectAsStateWithLifecycle()
     val toast by viewModel.toast.collectAsStateWithLifecycle()
+    val variants by viewModel.variants.collectAsStateWithLifecycle()
+    val needsRepair by viewModel.needsRepair.collectAsStateWithLifecycle()
+    val waking by viewModel.waking.collectAsStateWithLifecycle()
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -146,6 +153,9 @@ fun RemoteScreen(
                 Mode.BLUETOOTH -> BluetoothCard(
                     state = bt,
                     paired = paired,
+                    needsRepair = needsRepair,
+                    waking = waking,
+                    onRepairDone = viewModel::dismissRepairNotice,
                     onGrantPermission = onRequestBluetoothPermission,
                     onEnable = onEnableBluetooth,
                     onDiscoverable = onMakeDiscoverable,
@@ -175,6 +185,10 @@ fun RemoteScreen(
             )
 
             if (mode == Mode.BLUETOOTH) {
+                ButtonSetupCard(
+                    selected = variants,
+                    onSelect = viewModel::selectVariant,
+                )
                 TouchpadCard(
                     enabled = bt.connected,
                     onMove = viewModel::mouseMove,
@@ -241,6 +255,9 @@ private fun HelpSection(lines: List<String>) {
 private fun BluetoothCard(
     state: BluetoothState,
     paired: List<PairedDevice>,
+    needsRepair: Boolean,
+    waking: Boolean,
+    onRepairDone: () -> Unit,
     onGrantPermission: () -> Unit,
     onEnable: () -> Unit,
     onDiscoverable: () -> Unit,
@@ -266,6 +283,33 @@ private fun BluetoothCard(
             }
             state.message?.takeIf { !state.connected }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall)
+            }
+            if (waking) {
+                Text("Waking projector…", style = MaterialTheme.typography.bodySmall)
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            } else if (!state.connected && state.enabled) {
+                Text(
+                    "Projector in standby? Press Power to reconnect and wake it.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (needsRepair) {
+                Card(
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    ),
+                ) {
+                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Pair again to enable new buttons", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "This update adds new Power / Wake keys. The projector only learns them when " +
+                                "pairing: remove this phone in the projector's Bluetooth list, remove the " +
+                                "projector in the phone's Bluetooth settings, then pair again.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        TextButton(onClick = onRepairDone) { Text("I've paired again") }
+                    }
+                }
             }
 
             when {
@@ -465,6 +509,7 @@ private fun RemotePad(onDown: (RemoteKey) -> Unit, onUp: (RemoteKey) -> Unit) {
                     container = Color(0xFFC62828), tint = Color.White,
                 )
                 IconKey(RemoteKey.MUTE, Icons.Filled.VolumeOff, "Mute", onDown, onUp)
+                IconKey(RemoteKey.SETTINGS, Icons.Filled.Settings, "Settings", onDown, onUp)
                 IconKey(RemoteKey.MENU, Icons.Filled.Menu, "Menu", onDown, onUp)
             }
 
@@ -644,6 +689,59 @@ private fun TouchpadCard(
                             }
                         },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ButtonSetupCard(
+    selected: Map<RemoteKey, String>,
+    onSelect: (RemoteKey, String) -> Unit,
+) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                Modifier.fillMaxWidth().clickable { open = !open },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Tune, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Button setup", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(if (open) "Hide" else "Show", style = MaterialTheme.typography.labelLarge)
+            }
+            Text(
+                "If Power, Mute or Settings do nothing, try another option. Tapping an option sends it " +
+                    "right away; keep the one the projector reacts to.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            if (open) {
+                KeyVariants.options.forEach { (key, variants) ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        when (key) {
+                            RemoteKey.POWER -> "Power"
+                            RemoteKey.MUTE -> "Mute"
+                            RemoteKey.SETTINGS -> "Settings"
+                            RemoteKey.WAKE -> "Wake from standby (sent after reconnecting)"
+                            else -> key.name
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    variants.forEach { variant ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable { onSelect(key, variant.id) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = selected[key] == variant.id,
+                                onClick = { onSelect(key, variant.id) },
+                            )
+                            Text(variant.label, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
             }
         }
     }

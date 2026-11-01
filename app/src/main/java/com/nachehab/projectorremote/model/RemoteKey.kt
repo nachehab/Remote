@@ -7,11 +7,21 @@ sealed interface HidUsage {
 
     /** Consumer page (0x0C) usage, sent in the consumer-control report. */
     data class Consumer(val usage: Int) : HidUsage
+
+    /** Generic Desktop "System Control" bit (power down / sleep / wake up). */
+    data class System(val bit: Int) : HidUsage
+
+    companion object {
+        const val SYSTEM_POWER_DOWN = 0x01 // usage 0x81 -> Linux KEY_POWER  -> Android POWER
+        const val SYSTEM_SLEEP = 0x02      // usage 0x82 -> Linux KEY_SLEEP  -> Android SLEEP
+        const val SYSTEM_WAKE_UP = 0x04    // usage 0x83 -> Linux KEY_WAKEUP -> Android WAKEUP
+    }
 }
 
 /**
  * Every button on the remote, with its Android key code (used over Wi-Fi / ADB)
- * and the HID usage that Android's input stack maps to the same key (used over Bluetooth).
+ * and the default HID usage that Android's input stack maps to the same key (used over Bluetooth).
+ * Power, Mute, Settings and Wake can be re-mapped per projector, see [com.nachehab.projectorremote.bt.KeyVariants].
  */
 enum class RemoteKey(
     val androidKeyCode: Int,
@@ -22,6 +32,7 @@ enum class RemoteKey(
     HOME(3, HidUsage.Consumer(0x0223)),
     BACK(4, HidUsage.Consumer(0x0224)),
     MENU(82, HidUsage.Consumer(0x0040)),
+    SETTINGS(176, HidUsage.Consumer(0x019F)),
 
     UP(19, HidUsage.Keyboard(0x52), repeatable = true),
     DOWN(20, HidUsage.Keyboard(0x51), repeatable = true),
@@ -41,4 +52,7 @@ enum class RemoteKey(
 
     DELETE(67, HidUsage.Keyboard(0x2A), repeatable = true),
     ENTER(66, HidUsage.Keyboard(0x28)),
+
+    /** Not a visible button: sent after reconnecting to wake a projector in standby. */
+    WAKE(224, HidUsage.System(HidUsage.SYSTEM_WAKE_UP)),
 }

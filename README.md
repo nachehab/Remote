@@ -29,6 +29,17 @@ An Android app that controls a Goaiey (Android‑based) projector from your phon
 4. Use the remote. Next time, tap **Connect** next to the projector in *Paired devices*
    (the app also reconnects to the last projector automatically).
 
+#### Power, Mute, Settings and waking from standby
+- **Power while the projector is in standby:** the projector drops the Bluetooth link when it
+  sleeps. Pressing Power in the app reconnects to the last projector and then sends a wake‑up key,
+  the same way a Bluetooth remote does. If the projector is *fully* off, or its own remote turns it
+  on with infrared, its Bluetooth is off and no phone can wake it.
+- **Buttons that do nothing:** projector firmware often remaps Power / Mute / Settings for its own
+  remote. Open **Button setup** (Bluetooth tab) and tap the options one by one. Each option is sent
+  immediately; keep the one that works. The choice is saved.
+- **After updating the app** from version 1.0, remove the pairing on both the projector and the
+  phone and pair again, so the projector learns the new Power / Wake keys.
+
 ### Wi‑Fi
 1. Put the phone and the projector on the same Wi‑Fi network.
 2. On the projector: *Settings → About* → tap *Build number* 7 times to unlock Developer options.

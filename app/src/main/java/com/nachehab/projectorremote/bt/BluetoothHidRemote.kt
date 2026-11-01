@@ -62,6 +62,7 @@ class BluetoothHidRemote(
     private val pressedKeys = LinkedHashSet<Int>()
     private var modifiers = 0
     private var mouseButtons = 0
+    private var systemBits = 0
 
     private val _state = MutableStateFlow(BluetoothState(supported = adapter != null))
     val state: StateFlow<BluetoothState> = _state.asStateFlow()
@@ -141,6 +142,7 @@ class BluetoothHidRemote(
                 HidDescriptor.ID_KEYBOARD -> HidDescriptor.KEYBOARD_REPORT_SIZE
                 HidDescriptor.ID_CONSUMER -> HidDescriptor.CONSUMER_REPORT_SIZE
                 HidDescriptor.ID_MOUSE -> HidDescriptor.MOUSE_REPORT_SIZE
+                HidDescriptor.ID_SYSTEM -> HidDescriptor.SYSTEM_REPORT_SIZE
                 else -> 0
             }
             if (size == 0) {
@@ -285,30 +287,46 @@ class BluetoothHidRemote(
         )
     }
 
-    fun keyDown(key: RemoteKey) {
-        when (val usage = key.hid) {
+    fun usageDown(usage: HidUsage) {
+        when (usage) {
             is HidUsage.Keyboard -> {
                 pressedKeys.add(usage.usage)
                 sendKeyboardReport()
             }
             is HidUsage.Consumer -> sendConsumer(usage.usage)
+            is HidUsage.System -> {
+                systemBits = systemBits or usage.bit
+                send(HidDescriptor.ID_SYSTEM, byteArrayOf(systemBits.toByte()))
+            }
         }
     }
 
-    fun keyUp(key: RemoteKey) {
-        when (val usage = key.hid) {
+    fun usageUp(usage: HidUsage) {
+        when (usage) {
             is HidUsage.Keyboard -> {
                 pressedKeys.remove(usage.usage)
                 sendKeyboardReport()
             }
             is HidUsage.Consumer -> sendConsumer(0)
+            is HidUsage.System -> {
+                systemBits = systemBits and usage.bit.inv()
+                send(HidDescriptor.ID_SYSTEM, byteArrayOf(systemBits.toByte()))
+            }
         }
     }
 
-    suspend fun tap(key: RemoteKey) {
-        keyDown(key)
-        delay(KEY_GAP_MS)
-        keyUp(key)
+    fun keyDown(key: RemoteKey) = usageDown(key.hid)
+
+    fun keyUp(key: RemoteKey) = usageUp(key.hid)
+
+    /** Sends a complete press (tap, long press or repeated taps) of [variant]. */
+    suspend fun perform(variant: KeyVariant) {
+        repeat(variant.repeat) {
+            usageDown(variant.usage)
+            delay(variant.holdMs ?: KEY_HOLD_MS)
+            usageUp(variant.usage)
+            delay(KEY_HOLD_MS)
+        }
     }
 
     /** Types text with the virtual keyboard. Unsupported characters are skipped. */
@@ -363,5 +381,6 @@ class BluetoothHidRemote(
     private companion object {
         const val TAG = "BluetoothHidRemote"
         const val KEY_GAP_MS = 25L
+        const val KEY_HOLD_MS = 80L
     }
 }
