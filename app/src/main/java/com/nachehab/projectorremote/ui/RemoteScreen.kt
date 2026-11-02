@@ -125,6 +125,7 @@ fun RemoteScreen(
     val variants by viewModel.variants.collectAsStateWithLifecycle()
     val needsRepair by viewModel.needsRepair.collectAsStateWithLifecycle()
     val waking by viewModel.waking.collectAsStateWithLifecycle()
+    val powerBusy by viewModel.powerBusy.collectAsStateWithLifecycle()
 
     LaunchedEffect(toast) {
         toast?.let {
@@ -196,6 +197,11 @@ fun RemoteScreen(
                     onClick = viewModel::mouseClick,
                 )
             } else if (wifi.connected) {
+                WifiPowerCard(
+                    busy = powerBusy,
+                    onToggle = viewModel::wifiTogglePower,
+                    onShutDown = viewModel::wifiShutDown,
+                )
                 AppsCard(
                     apps = apps,
                     onLaunch = viewModel::launchApp,
@@ -741,6 +747,41 @@ private fun ButtonSetupCard(
                             Text(variant.label, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WifiPowerCard(
+    busy: Boolean,
+    onToggle: () -> Unit,
+    onShutDown: () -> Unit,
+) {
+    var confirm by rememberSaveable { mutableStateOf(false) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Power", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Standby / Wake asks the projector's own power manager to sleep or wake and checks " +
+                    "that it worked. Waking only works while the projector keeps Wi-Fi on in standby.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onToggle, enabled = !busy) {
+                    Text(if (busy) "Working…" else "Standby / Wake")
+                }
+                OutlinedButton(onClick = { confirm = true }, enabled = !busy) { Text("Shut down") }
+            }
+            if (confirm) {
+                Text(
+                    "Shut down fully? You will need the projector's own remote or power button to turn it on again.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { confirm = false; onShutDown() }) { Text("Shut down") }
+                    TextButton(onClick = { confirm = false }) { Text("Cancel") }
                 }
             }
         }

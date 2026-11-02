@@ -40,12 +40,27 @@ An Android app that controls a Goaiey (Android‑based) projector from your phon
 - **After updating the app** from version 1.0, remove the pairing on both the projector and the
   phone and pair again, so the projector learns the new Power / Wake keys.
 
+#### If Power still does nothing over Bluetooth
+Many projectors handle Power only through the infrared signal from their own remote. A remote without a
+microphone button (Netflix / YouTube / Prime / Apps keys, F+ / F− focus) is usually infrared‑only.
+Their firmware ignores a Bluetooth Power key, and they can't be switched on over Bluetooth at all.
+Use **Wi‑Fi mode** for Power instead (below).
+
 ### Wi‑Fi
 1. Put the phone and the projector on the same Wi‑Fi network.
 2. On the projector: *Settings → About* → tap *Build number* 7 times to unlock Developer options.
 3. In *Developer options* enable *USB debugging* and, if listed, *Network / ADB debugging*.
 4. In the app's **Wi‑Fi** tab, tap **Find projector** or type its IP (Settings → Network on the projector).
 5. Tap **Connect** and accept *"Allow debugging?"* on the projector (tick *Always allow*).
+
+#### Power over Wi‑Fi
+- **Power** (or **Standby / Wake** in the *Power* card) sends Sleep or Wake, then the plain Power key if
+  the first one had no effect. It checks the projector's power state after each key and tells you the result.
+  If the connection dropped, the app reconnects first.
+- **Shut down** switches the projector fully off (`reboot -p`). It then has to be started with its own
+  remote or power button.
+- Waking over Wi‑Fi only works if the projector keeps Wi‑Fi on in standby. Turning it on from fully off
+  needs its infrared remote, its power button, or a phone with an IR blaster.
 
 ## Building
 

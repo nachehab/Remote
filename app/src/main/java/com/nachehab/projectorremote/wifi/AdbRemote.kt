@@ -6,6 +6,7 @@ import com.nachehab.projectorremote.model.RemoteKey
 import dadb.AdbKeyPair
 import dadb.Dadb
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,6 +22,8 @@ data class WifiState(
     val deviceName: String? = null,
     val message: String? = null,
 )
+
+enum class PowerResult { ASLEEP, AWAKE, SENT, NO_EFFECT, NOT_CONNECTED }
 
 data class InstalledApp(val packageName: String, val label: String)
 
@@ -116,6 +119,46 @@ class AdbRemote(private val context: Context) {
         shell("input text '$escaped'")
     }
 
+    /** "Awake", "Asleep", "Dozing", "Dreaming", or null if it can't be read. */
+    suspend fun wakefulness(): String? {
+        val out = shell("dumpsys power | grep -m1 mWakefulness=") ?: return null
+        return out.substringAfter("mWakefulness=", "").trim().ifBlank { null }
+    }
+
+    /**
+     * Toggles standby with the projector's own power manager. Tries the sleep / wake key first,
+     * then the plain power key, and checks the result, because projector firmwares often
+     * ignore one of them.
+     */
+    suspend fun togglePower(): PowerResult {
+        val before = wakefulness()
+        val goingToSleep = before == null || before == "Awake"
+        val attempts = if (goingToSleep) listOf(KEY_SLEEP, KEY_POWER) else listOf(KEY_WAKEUP, KEY_POWER)
+        for (code in attempts) {
+            shell("input keyevent $code") ?: return PowerResult.NOT_CONNECTED
+            delay(POWER_SETTLE_MS)
+            val now = wakefulness() ?: return PowerResult.SENT // unknown; assume it worked
+            if ((now == "Awake") != goingToSleep) {
+                return if (goingToSleep) PowerResult.ASLEEP else PowerResult.AWAKE
+            }
+        }
+        return PowerResult.NO_EFFECT
+    }
+
+    suspend fun wakeUp(): Boolean = shell("input keyevent $KEY_WAKEUP") != null
+
+    /** Full shutdown. The projector then needs its own remote or power button to start again. */
+    suspend fun shutDown(): Boolean =
+        shell("reboot -p || svc power shutdown") != null || !(_state.value.connected)
+
+    /** Reconnects to the last host if the socket dropped (e.g. projector went to standby). */
+    suspend fun ensureConnected(fallbackHost: String, fallbackPort: Int): Boolean {
+        if (_state.value.connected && shell("echo ok")?.contains("ok") == true) return true
+        val (host, port) = target ?: (fallbackHost to fallbackPort)
+        if (host.isBlank()) return false
+        return connect(host, port)
+    }
+
     suspend fun openSettings() {
         shell("am start -a android.settings.SETTINGS")
     }
@@ -174,6 +217,10 @@ class AdbRemote(private val context: Context) {
 
     companion object {
         const val DEFAULT_PORT = 5555
+        private const val KEY_POWER = 26
+        private const val KEY_SLEEP = 223
+        private const val KEY_WAKEUP = 224
+        private const val POWER_SETTLE_MS = 1_500L
         private const val TAG = "AdbRemote"
         private const val CONNECT_TIMEOUT_MS = 5_000
         // Long enough for the user to accept the "Allow debugging?" prompt on the projector.

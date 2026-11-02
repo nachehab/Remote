@@ -14,6 +14,7 @@ import com.nachehab.projectorremote.model.RemoteKey
 import com.nachehab.projectorremote.wifi.AdbRemote
 import com.nachehab.projectorremote.wifi.InstalledApp
 import com.nachehab.projectorremote.wifi.NetworkScanner
+import com.nachehab.projectorremote.wifi.PowerResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
@@ -252,6 +253,42 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private val _powerBusy = MutableStateFlow(false)
+    val powerBusy: StateFlow<Boolean> = _powerBusy.asStateFlow()
+
+    private fun runPower(block: suspend () -> Unit) {
+        if (_powerBusy.value) return
+        _powerBusy.value = true
+        viewModelScope.launch {
+            try { block() } finally { _powerBusy.value = false }
+        }
+    }
+
+    /** Power over Wi-Fi: the projector's own power manager switches standby on or off. */
+    fun wifiTogglePower() = runPower {
+        if (!wifi.ensureConnected(prefs.lastHost, prefs.lastPort)) {
+            _toast.value = "Can't reach the projector over Wi-Fi. In deep standby or fully off its " +
+                "Wi-Fi is off too; use its own remote or power button."
+            return@runPower
+        }
+        _toast.value = when (wifi.togglePower()) {
+            PowerResult.ASLEEP -> "Projector is in standby"
+            PowerResult.AWAKE -> "Projector is on"
+            PowerResult.SENT -> "Power command sent"
+            PowerResult.NO_EFFECT -> "The projector ignored the power keys. Try \"Shut down\"."
+            PowerResult.NOT_CONNECTED -> "Wi-Fi remote is not connected"
+        }
+    }
+
+    fun wifiShutDown() = runPower {
+        if (!wifi.ensureConnected(prefs.lastHost, prefs.lastPort)) {
+            _toast.value = "Wi-Fi remote is not connected"
+            return@runPower
+        }
+        wifi.shutDown()
+        _toast.value = "Shutting down. Turn it back on with its own remote or power button."
+    }
+
     fun openProjectorSettings() {
         viewModelScope.launch { wifi.openSettings() }
     }
@@ -277,6 +314,10 @@ class RemoteViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
             Mode.WIFI -> {
+                if (key == RemoteKey.POWER) {
+                    wifiTogglePower()
+                    return
+                }
                 if (!wifi.state.value.connected) {
                     _toast.value = "Wi-Fi remote is not connected"
                     return
